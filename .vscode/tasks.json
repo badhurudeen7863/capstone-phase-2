@@ -1,0 +1,46 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "ExpenseIQ: Install dependencies",
+      "type": "shell",
+      "command": "${command:python.interpreterPath} -m pip install -r requirements.txt",
+      "problemMatcher": []
+    },
+    {
+      "label": "ExpenseIQ: Generate synthetic dataset",
+      "type": "shell",
+      "command": "${command:python.interpreterPath} scripts/generate_synthetic_data.py",
+      "problemMatcher": []
+    },
+    {
+      "label": "ExpenseIQ: Seed database",
+      "type": "shell",
+      "command": "${command:python.interpreterPath} scripts/seed_db.py --reset",
+      "problemMatcher": []
+    },
+    {
+      "label": "ExpenseIQ: Train & compare models",
+      "type": "shell",
+      "command": "${command:python.interpreterPath} scripts/train_model.py",
+      "problemMatcher": []
+    },
+    {
+      "label": "ExpenseIQ: Run tests",
+      "type": "shell",
+      "command": "${command:python.interpreterPath} -m pytest",
+      "problemMatcher": []
+    },
+    {
+      "label": "ExpenseIQ: One-click setup (install → data → seed → train)",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "ExpenseIQ: Install dependencies",
+        "ExpenseIQ: Generate synthetic dataset",
+        "ExpenseIQ: Seed database",
+        "ExpenseIQ: Train & compare models"
+      ],
+      "problemMatcher": []
+    }
+  ]
+}

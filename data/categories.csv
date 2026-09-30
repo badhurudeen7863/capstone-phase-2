@@ -1,0 +1,8 @@
+name,type
+Rent,Fixed
+Utilities,Fixed
+Food & Groceries,Variable
+Health,Variable
+Transport,Variable
+Entertainment,Variable
+Other,Variable

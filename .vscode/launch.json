@@ -1,0 +1,70 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "ExpenseIQ: Backend (FastAPI)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": ["backend.main:app", "--reload", "--host", "0.0.0.0", "--port", "8000"],
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/.env",
+      "justMyCode": true,
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "ExpenseIQ: Dashboard (Streamlit)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "streamlit",
+      "args": ["run", "frontend/app.py", "--server.port", "8501"],
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/.env",
+      "justMyCode": true,
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "ExpenseIQ: Train model",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "scripts/train_model.py",
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/.env",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "ExpenseIQ: Seed database",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "scripts/seed_db.py",
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/.env",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "ExpenseIQ: Generate synthetic data",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "scripts/generate_synthetic_data.py",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "ExpenseIQ: Tests (pytest)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": ["tests", "-v"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": false
+    }
+  ],
+  "compounds": [
+    {
+      "name": "ExpenseIQ: Full stack (API + Dashboard)",
+      "configurations": ["ExpenseIQ: Backend (FastAPI)", "ExpenseIQ: Dashboard (Streamlit)"],
+      "stopAll": true
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.pytest_tmp/
+logs/*.log
+data/expenseiq.db
+data/expenseiq.db-journal
+.ipynb_checkpoints/
+.vscode/*
+!.vscode/launch.json
+!.vscode/tasks.json
+!.vscode/settings.json
+!.vscode/extensions.json

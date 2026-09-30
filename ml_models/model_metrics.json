@@ -1,0 +1,55 @@
+{
+  "model_name": "XGBoost",
+  "model_version": "v2-20260930",
+  "trained_at": "2026-09-30T19:34:44",
+  "target_space": "ratio (next-month total / rolling_mean_30 * days); rescaled at inference",
+  "n_training_samples": 406,
+  "n_holdout_samples": 102,
+  "feature_names": [
+    "lag_1",
+    "lag_7",
+    "lag_30",
+    "rolling_mean_7",
+    "rolling_mean_30",
+    "rolling_std_30",
+    "expanding_std",
+    "ema_7",
+    "sin_month",
+    "cos_month",
+    "month_of_year",
+    "days_in_target_month"
+  ],
+  "comparison": {
+    "LinearRegression": {
+      "mae": 2071.7,
+      "mse": 6621021.1,
+      "rmse": 2573.13,
+      "r2": 0.7949,
+      "cv_rmse": 2152.96
+    },
+    "RandomForest": {
+      "mae": 2001.63,
+      "mse": 6813957.21,
+      "rmse": 2610.36,
+      "r2": 0.7889,
+      "cv_rmse": 1964.49
+    },
+    "XGBoost": {
+      "mae": 1924.21,
+      "mse": 6550536.42,
+      "rmse": 2559.4,
+      "r2": 0.7971,
+      "cv_rmse": 1784.16
+    }
+  },
+  "deployed": {
+    "mae": 1924.21,
+    "mse": 6550536.42,
+    "rmse": 2559.4,
+    "r2": 0.7971,
+    "cv_rmse": 1784.16
+  },
+  "ci_rule": "pred +/- z * RMSE (z=1.96 for 95%), widens with sqrt(horizon)",
+  "anomaly_rule": "value > rolling_30_mean + 3 * rolling_30_std",
+  "training_seconds": 8.7
+}

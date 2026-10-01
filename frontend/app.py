@@ -18,6 +18,14 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from frontend.client import APIError, APIClient
+from frontend.insight_engine import (
+    analyze_spending_patterns,
+    average_monthly_categories,
+    average_monthly_total,
+    build_category_spending_alerts,
+    build_saving_recommendations,
+    forecast_horizon_for_current_month,
+)
 
 GREEN = "#1a7f5a"
 GREEN_DARK = "#14603f"
@@ -211,6 +219,231 @@ def tab_dashboard(client: APIClient) -> None:
     else:
         st.info("No transactions yet - add one or upload a CSV.")
     st.markdown("</div>", unsafe_allow_html=True)
+    render_dashboard_insights(client, s, monthly, cats, anomalies, st.session_state.user["user_id"])
+
+
+def render_dashboard_insights(
+    client: APIClient,
+    summary: dict,
+    monthly: list[dict],
+    category_summary: list[dict],
+    anomalies: list[dict],
+    user_id: int,
+) -> None:
+    """Render data-driven patterns, saving guidance, and early-warning alerts."""
+    today = date.today()
+    token = client.token or ""
+    transaction_error = None
+    month_matrix_error = None
+    try:
+        transactions = _cached("list_expenses", token, limit=5000)
+    except Exception as exc:
+        transactions = []
+        transaction_error = exc
+    try:
+        category_month_rows = _cached("category_month", token)
+    except Exception as exc:
+        category_month_rows = []
+        month_matrix_error = exc
+
+    category_types = {
+        str(item.get("category")): str(item.get("type", "Variable"))
+        for item in category_summary
+    }
+    patterns = analyze_spending_patterns(
+        transactions,
+        category_month_rows,
+        today=today,
+        category_types=category_types,
+    )
+    completed_category_baseline = average_monthly_categories(
+        category_month_rows, months=3, today=today, completed_only=True
+    )
+    historical_monthly_average = average_monthly_total(
+        monthly, months=3, today=today, completed_only=True
+    )
+    current_category_spend = {
+        str(item.get("category")): item.get("this_month", 0.0)
+        for item in category_summary
+    }
+    category_alerts = build_category_spending_alerts(
+        current_category_spend,
+        completed_category_baseline,
+        category_types,
+        today=today,
+    )
+
+    st.markdown("---")
+    st.markdown("### 1. Spending Patterns")
+    st.caption(
+        "Insights use your transactions and existing monthly category history. "
+        "Weekly/monthly increases need at least a 25% and ₹200 rise; weekend patterns "
+        "compare average daily spend over up to 90 recorded days."
+    )
+    if transaction_error:
+        st.warning(f"Transaction patterns could not be loaded right now: {transaction_error}")
+    elif patterns:
+        for insight in patterns:
+            st.info(f"{insight['title']} — {insight['detail']}")
+    else:
+        st.caption("No strong repeated pattern was detected yet. More dated transactions make weekly and weekend comparisons more reliable.")
+    if month_matrix_error:
+        st.caption("Month-to-month category comparisons are temporarily unavailable; other pattern checks can still run.")
+
+    st.markdown("### 2. Saving Recommendations")
+    st.caption(
+        "Enter your monthly income. It stays in this Streamlit session, not the database. "
+        "Suggested savings = income − the larger of the expense estimate or current spend so far."
+    )
+    income_col, forecast_col = st.columns([1, 1])
+    income_key = f"dashboard_monthly_income_{user_id}"
+    with income_col:
+        monthly_income = st.number_input(
+            "Monthly income (₹)",
+            min_value=0.0,
+            step=500.0,
+            format="%.2f",
+            key=income_key,
+            help="Used only to calculate this session's savings estimate.",
+        )
+    forecast_key = f"dashboard_saving_forecast_{user_id}"
+    forecast_error_key = f"dashboard_saving_forecast_error_{user_id}"
+    with forecast_col:
+        st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+        refresh_forecast = st.button("Get fresh XGBoost forecast", key=f"dashboard_forecast_button_{user_id}")
+    if refresh_forecast:
+        horizon = forecast_horizon_for_current_month(summary.get("last_date"), today=today)
+        if horizon is None:
+            st.session_state.pop(forecast_key, None)
+            st.session_state[forecast_error_key] = (
+                "The latest transaction history is too old for a current-month forecast. "
+                "The saving estimate will use completed-month spending history instead."
+            )
+        else:
+            try:
+                forecast_result = client.forecast(user_id, horizon=horizon, confidence=0.95)
+                target_month = date.fromisoformat(str(forecast_result["target_month"])[:10])
+                current_month = today.replace(day=1)
+                if target_month.replace(day=1) < current_month:
+                    st.session_state.pop(forecast_key, None)
+                    st.session_state[forecast_error_key] = (
+                        "The model returned a past target month, so it was not used as a future saving estimate."
+                    )
+                else:
+                    st.session_state[forecast_key] = {
+                        "target_month": target_month.isoformat(),
+                        "predicted_amount": float(forecast_result["predicted_amount"]),
+                        "model_version": forecast_result.get("model_version"),
+                        "last_transaction_date": summary.get("last_date"),
+                        "transaction_count": summary.get("transaction_count"),
+                        "total_spend": summary.get("total_spend"),
+                    }
+                    st.session_state.pop(forecast_error_key, None)
+            except APIError as exc:
+                st.session_state.pop(forecast_key, None)
+                st.session_state[forecast_error_key] = str(exc.detail)
+            except Exception as exc:
+                st.session_state.pop(forecast_key, None)
+                st.session_state[forecast_error_key] = f"Forecast service unavailable: {exc}"
+    if st.session_state.get(forecast_error_key):
+        st.caption(f"XGBoost forecast not used: {st.session_state[forecast_error_key]}")
+
+    forecast_result = st.session_state.get(forecast_key)
+    if forecast_result and any(
+        forecast_result.get(key) != summary.get(summary_key)
+        for key, summary_key in (
+            ("last_transaction_date", "last_date"),
+            ("transaction_count", "transaction_count"),
+            ("total_spend", "total_spend"),
+        )
+    ):
+        forecast_result = None
+        st.session_state.pop(forecast_key, None)
+    if forecast_result:
+        try:
+            forecast_period = date.fromisoformat(forecast_result["target_month"])
+            if forecast_period.replace(day=1) < today.replace(day=1):
+                forecast_result = None
+                st.session_state.pop(forecast_key, None)
+        except (KeyError, TypeError, ValueError):
+            forecast_result = None
+            st.session_state.pop(forecast_key, None)
+    predicted_expenses = forecast_result.get("predicted_amount") if forecast_result else None
+    historical_expenses = historical_monthly_average or None
+    saving_plan = build_saving_recommendations(
+        monthly_income,
+        summary.get("this_month", 0.0),
+        predicted_expenses,
+        completed_category_baseline,
+        current_category_spend,
+        category_types,
+        patterns,
+        historical_expenses=historical_expenses,
+    )
+
+    if saving_plan["status"] == "income_required":
+        st.info("Enter monthly income above to calculate a personalized savings estimate.")
+    elif saving_plan["status"] == "history_required":
+        st.info("There is not enough completed-month history for a safe monthly estimate yet. Add more expenses or try the XGBoost forecast after at least 30 days of history.")
+    else:
+        plan_cols = st.columns(4)
+        plan_cols[0].metric("Monthly income", inr(saving_plan["monthly_income"]))
+        plan_cols[1].metric("Spent this month", inr(saving_plan["current_expenses"]))
+        plan_cols[2].metric("Planning expense", inr(saving_plan["planning_expense"]))
+        if saving_plan["shortfall"] > 0:
+            plan_cols[3].metric("Income gap", inr(saving_plan["shortfall"]))
+            st.warning("The current expense estimate is above income. Review the variable-category suggestion below.")
+        else:
+            plan_cols[3].metric("Suggested saving", inr(saving_plan["suggested_saving"]))
+            st.success(f"A practical starting target is to save about {inr(saving_plan['suggested_saving'])} this month.")
+        target_text = ""
+        if forecast_result:
+            target_text = f" for {month_label(forecast_result['target_month'])}"
+        st.caption(
+            f"Expense basis: {saving_plan['expense_source']}{target_text}. "
+            "The planning expense uses the greater of that estimate and current month-to-date actual spending."
+        )
+
+    category_recommendation = saving_plan.get("category_recommendation")
+    if category_recommendation:
+        st.info(
+            f"Try reducing {category_recommendation['category']} by about "
+            f"{inr(category_recommendation['suggested_cut'])} per month. "
+            f"This is based on recent spending of {inr(category_recommendation['reference_spend'])} "
+            "(about 10% of that category, capped at 5% of income); fixed costs are excluded."
+        )
+
+    st.markdown("### 3. Expense Alerts")
+    st.caption("Category pace alerts require spending to be at least 30% and ₹200 above the historical pace; fixed costs are excluded. The existing 3σ anomaly detector is also shown below.")
+    alert_count = 0
+    for alert in category_alerts:
+        increase_text = (
+            f" ({alert['increase_pct']:.0f}% above its normal pace)"
+            if alert["increase_pct"] is not None
+            else ""
+        )
+        st.warning(
+            f"Warning: {alert['category']} spending is higher than its normal pattern. "
+            f"Spent {inr(alert['current_spend'])} so far; the usual pace by day {today.day} "
+            f"is about {inr(alert['expected_to_date'])} (recent monthly average "
+            f"{inr(alert['normal_monthly_average'])}){increase_text}."
+        )
+        alert_count += 1
+    if anomalies:
+        st.markdown("**Existing 3σ anomaly detector**")
+        for anomaly in anomalies[:5]:
+            level = "category-month" if anomaly.get("level") == "category_month" else "transaction/day"
+            st.warning(
+                f"{anomaly.get('date', 'Date unavailable')} · {anomaly.get('category') or level}: "
+                f"{inr(anomaly.get('amount'))} (threshold {inr(anomaly.get('threshold'))}). "
+                f"{anomaly.get('description') or 'Unusually high spending detected.'}"
+            )
+            alert_count += 1
+    if alert_count == 0:
+        if not completed_category_baseline:
+            st.info("No alert is active. Category comparisons will appear after you have at least one completed month of history.")
+        else:
+            st.success("No unusually high category spending or 3σ anomaly was detected by the current checks.")
 
 
 # ------------------------------------------------------------------ add expense

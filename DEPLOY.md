@@ -48,11 +48,45 @@ If you prefer Streamlit's own host for the dashboard:
    ```
 4. Deploy. You get a free `https://<your-app>.streamlit.app` URL.
 
-## Option C — Hugging Face Spaces (single URL)
+## Option C — Hugging Face Spaces (single free URL, one Space runs both)
 
-A free HF Space (`https://<space>.hf.space`) can run both processes from one
-container (start `uvicorn` in the background, then `streamlit run` in the
-foreground). Say the word and a launcher script + space config can be added.
+A free HF Space can host the **whole app behind one URL**. The root
+[`app.py`](app.py) launcher starts the FastAPI backend in a background thread
+and renders the Streamlit dashboard in the foreground — no Dockerfile needed.
+The dashboard calls the API server-side (`127.0.0.1`), so the single public
+URL is all visitors need. (Tested end-to-end: login, analytics, forecast.)
+
+1. **Security first:** if you pasted a Hugging Face token into a chat, **revoke
+   it now** at <https://huggingface.co/settings/tokens> and create a fresh one
+   (write role). Never share tokens in chats — treat any pasted token as
+   compromised.
+2. Create the Space: <https://huggingface.co/new-space> → name it `expenseiq`
+   → SDK **Streamlit** → **Public** → **Create space**.
+3. Push this branch into the Space (run in **your own terminal**; when git asks
+   for credentials, use your HF username and the **new** token as password):
+
+   ```bash
+   git push --force https://huggingface.co/spaces/<HF_USER>/expenseiq \
+     arena/cdfb089c-capstone-phase-2:main
+   ```
+
+   (`--force` because the fresh Space has its own starter commit.)
+4. Watch the build in the Space's **Logs** tab (~3–5 min: `pip install`).
+   When the app tab lights up, your permanent free URL is:
+
+   **`https://<HF_USER>-expenseiq.hf.space`**
+
+5. Log in with `demo@expenseiq.app` / `demo1234`. The demo DB is seeded
+   automatically on first start (`scripts/seed_db.py` is idempotent).
+
+Notes:
+- Free CPU Spaces sleep after ~48 h of inactivity; the first visit after that
+  takes ~1–2 min (cold start) and re-seeds the demo data (ephemeral disk).
+- The API port (8000) is reachable only *inside* the Space. If you also want a
+  public API URL, deploy the API separately (Option A) and point the dashboard
+  at it via `API_BASE_URL`.
+- For a custom domain in front of the Space, see the DuckDNS/FreeDNS section
+  below (point it at `<HF_USER>-expenseiq.hf.space`).
 
 ---
 

@@ -5,7 +5,9 @@
 [server]
 headless = true
 address = "0.0.0.0"
-port = 8501
+# 7860 is the standard port for Hugging Face Spaces; Render and local runs pass
+# an explicit --server.port flag, which overrides this value.
+port = 7860
 # Disable CORS/XSRF checks so the app works behind hosted reverse proxies.
 enableCORS = false
 enableXsrfProtection = false

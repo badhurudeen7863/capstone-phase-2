@@ -1,0 +1,43 @@
+# ExpenseIQ - one-click free deployment on Render (two free web services).
+#
+# Deploy: https://dashboard.render.com -> New -> Blueprint -> connect this repo
+# (branch: arena/cdfb089c-capstone-phase-2) -> Apply.
+#
+# Resulting free URLs:
+#   API       -> https://expenseiq-api.onrender.com        (FastAPI + /docs)
+#   Dashboard -> https://expenseiq-dashboard.onrender.com  (Streamlit app)
+#
+# The dashboard's API_BASE_URL is wired automatically to the API service.
+# Free tier spins down after 15 min idle; the first request after that takes
+# ~30-60s. The demo database is (re)seeded automatically on every start.
+
+services:
+  - type: web
+    name: expenseiq-api
+    runtime: python
+    plan: free
+    healthCheckPath: /healthz
+    buildCommand: pip install -r requirements.txt
+    # Seed is idempotent (scripts/seed_db.py skips existing rows), so it is
+    # safe to run on every start - important because free-tier disks are
+    # ephemeral and may be wiped between cold starts.
+    startCommand: python scripts/seed_db.py && uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: LOG_LEVEL
+        value: INFO
+
+  - type: web
+    name: expenseiq-dashboard
+    runtime: python
+    plan: free
+    healthCheckPath: /_stcore/health
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run frontend/app.py --server.address 0.0.0.0 --server.port $PORT --server.headless true --server.enableCORS false --server.enableXsrfProtection false
+    envVars:
+      - key: API_BASE_URL
+        fromService:
+          type: web
+          name: expenseiq-api
+          envVarKey: RENDER_EXTERNAL_URL
